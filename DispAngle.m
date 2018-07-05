@@ -147,12 +147,7 @@ overlap = frameLength - inc;
      alpha = cos(theta0/180*pi);
      beta = 1;
      N = frameLength;
-     omega = zeros(N/2+1,1);
-     omega_c = pi/(2*tao0);
-     Hf = zeros(2,N/2+1);
-     Hb = zeros(2,N/2+1);
-     HL = zeros(1,N/2+1);
-%      H(:,1) = 1;
+
 last_acquiredAudio = zeros(overlap,8);
 last_output = zeros(overlap,1);
 % playData = zeros(chunk_size,1);
