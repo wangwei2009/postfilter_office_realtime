@@ -163,8 +163,6 @@ ang = [90;0];
 T = load('T0.mat');
 T = T.T0;
 
-Pnn = load('Pnn.mat');
-Pnn = Pnn.Pnn;
 while start
     
         acquiredAudio = deviceReader();
@@ -181,39 +179,6 @@ while start
     else
         y = x(:,1);
     end
-
-    %y = DMA1_b2b( x,y,frameLength,inc,omega,Hb,Hf,HL,fs,N,tao0,alpha,beta);
-%     [y,beta] = DMA1_b2b_NLMS( x,y,frameLength,inc,omega,Hb,Hf,HL,fs,N,tao0,alpha,beta);
-    
-%     for i = 1:inc:length(x(:,1))-frameLength
-%         for k = 2:N/2+1
-%             omega(k) = 2*pi*(k-1)*fs/N;    
-% %             if k<16
-% %                 H(:,k) = 1j/(omega(k)*tao0*(alpha-1))*[1-beta*exp(-1j*omega(k)*tao0*(1-alpha));...
-% %                                                             -(1-beta)*exp(1j*omega(k)*tao0*alpha)];
-% %             else
-%             %         H(:,k) = 1j/((alpha-1)*tao0*omega(k))*[1;-exp(1j*omega(k)*tao0*alpha)];
-% %             H(:,k) = 1/(1-exp(1j*omega(k)*tao0*(alpha-1)))*[1;-exp(1j*omega(k)*tao0*alpha)];
-%             Hf(:,k) = [1;
-%                        -1*exp(-1j*omega(k)*tao0)];
-%             Hb(:,k) = [-1*exp(-1j*omega(k)*tao0);
-%                        1;];
-% %             if k<=66
-% %                 HL(k) = 1/(2*sin(omega(k)*tao0));
-% %             else
-% %                 HL(k) = 0.5;
-% %             end
-%             HL(k) = 1/(1-exp(1j*omega(k)*tao0*(alpha-1)));
-% %             end
-%         end
-%          d = fft(x(i:i+frameLength-1,:).*hann(frameLength));
-%          Cf = sum(d(1:N/2+1,:).*Hf',2);
-%          Cb = sum(d(1:N/2+1,:).*Hb',2);
-%          C = (Cf - beta*Cb).*HL';
-% %          yd = sum(d(1:129,:),2);
-%          fftd = [C;conj(flipud(C(1:N/2-1)))];
-%          y(i:i+frameLength-1) = y(i:i+frameLength-1)+(ifft(fftd));
-%     end
     
     playData = [y(1:end-overlap)];
     deviceWriter(real(playData));
@@ -222,51 +187,15 @@ while start
     last_output = y(end-overlap+1:end);
     last_acquiredAudio = acquiredAudio(end-overlap+1:end,:);
     
-    
-    
-%     acquiredAudio = deviceReader();
-%     release(deviceReader);
-%     ang = estimator(acquiredAudio(:,2:7));
-%     ang = estimator(acquiredAudio(:,[4,2,5,7]));
-%     ang2 = estimator(acquiredAudio(:,[5,1,2]));
-    
-%     ang(1) = ang(1)+180;
-    
-%     y = DMA(acquiredAudio(:,[1,dir+1]));
-%     y = DMA(acquiredAudio(:,1:2));
-%     deviceWriter(real(y));
-    
-    
-%     set(handles.text1,'string',ang);
-%     set(handles.text1, 'FontSize',18);
 
-        set(handles.text1,'string',beta);
+    set(handles.text1,'string',beta);
     theta = 0:0.01:pi/4;
     rho = sin(2*theta).*cos(2*theta);
 %     polarplot(theta-22.5/180*pi+ang(1)/180*pi,rho)
     polarplot(theta-22.5/180*pi+(dir-1)*60/180*pi,rho)
     drawnow
-    
-    
-% 
-%     plot(myRecording(:,1));
-%     axis([1,Fs*m,-0.3,0.3]);
-    %end
 end
-% set(handles.text1,'String',c);
-% popup_sel_index = get(handles.popupmenu1, 'Value');
-% switch popup_sel_index
-%     case 1
-%         plot(rand(5));
-%     case 2
-%         plot(sin(1:0.01:25.99));
-%     case 3
-%         bar(1:.5:10);
-%     case 4
-%         plot(membrane);
-%     case 5
-%         surf(peaks);
-% end
+
 
 
 % --------------------------------------------------------------------
