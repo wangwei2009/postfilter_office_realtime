@@ -58,11 +58,11 @@ M = N;
 alpha = 0.75;
 
 %% Frequency domain delay-sum,time alignment
-[ DelaySumOut, x] = DelaySumURA(x,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
+% [ DelaySumOut, x] = DelaySumURA(x,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
 
 
-DS = DelaySumOut;
-% DS = sum(x,2)/size(x,2);
+% DS = DelaySumOut;
+DS = sum(x,2)/size(x,2);
 % [sc,F]=mycohere(x1(:,1),x1(:,2),256,fs,hanning(256),0.75*256);
 % Fvv2 = Fvv;
 

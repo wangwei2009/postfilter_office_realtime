@@ -146,7 +146,7 @@ end
 
 global angle;
 angle_dir = (dir-1)*30;
-angle = [angle_dir,0]/180*pi;
+angle = [angle_dir,30]/180*pi;
 M = 4;        %Channels
 global r;
 r = 0.032;
@@ -184,7 +184,7 @@ L = 1;
 ang = [90;0];
 timeCount = 0;
 global buffer_size;
-noisePeriod = round(2*16000/buffer_size);%
+noisePeriod = round(0.1*16000/buffer_size);%
 global noise;
 noise = zeros(buffer_size*noisePeriod,M);
 
@@ -195,30 +195,36 @@ while start
     if(timeCount<noisePeriod)
         noise(timeCount*buffer_size+1:timeCount*buffer_size+buffer_size,:) = acquiredAudio(:,[2,3,4,5]);
         timeCount = timeCount+1;
-        if(timeCount==noisePeriod)
-          %% Frequency domain delay-sum,time alignment
-           [ DelaySumOut, noise_DS] = DelaySumURA(noise,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
-            noise = noise_DS;
-          %% estimate noise coherence function
-            for i = 1:size(noise,2)
-                for j = 1:size(noise,2)
-                    [sc,F]=mycohere(noise(:,i),noise(:,j),256,fs,hanning(256),0.75*256);
-                    Fvv(:,i,j) = real(sc);
-                    index = find(Fvv(:,i,j)>0.95);
-                    if(size(index,1)>0)
-                        Fvv(index,i,j)=0.95;
-                    end
-                    Fvv(1,i,j) = 0.95;
-                end
-            end
-        end
     else
         x = [last_acquiredAudio(:,[2,3,4,5]);acquiredAudio(:,[2,3,4,5])];
         if NS
+            %% Frequency domain delay-sum,time alignment
+            [ DelaySumOut, x] = DelaySumURA(x,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
+        
+            %% postfilter
             [y,Pxii_pre,Pxij_pre]= post_filter_func( x,fs,Fvv,Pxii_pre,Pxij_pre,angle);
+            threshold = 0.2;
+            %% updata noise coherence
+            if(sum(abs(x(:,1)))/size(x,1)<threshold)
+                t = 0;
+                alpha = 0.9;
+                for i = 1:M-1
+                    for j = i+1:M
+                        t = t+1;
+                        Fvv_ij = Pxij_pre(t,:)./sqrt(Pxii_pre(i,:).*Pxii_pre(i,:));
+                        Fvv(:,i,j) = alpha*Fvv(:,i,j)+(1-alpha)*real(Fvv_ij)';
+                        index = find(Fvv(:,i,j)>0.90);
+                        if(size(index,1)>0)
+                            Fvv(index,i,j)=0.90;
+                        end
+                        Fvv(1,i,j) = 0.90;
+                    end
+                end
+            end
+
             y = y';
             
-%             playData = y(end-N_FFT+1:end);
+            %% compensate window
             playData = y(1:end-overlap);
             playData(1:overlap) = playData(1:overlap)+y_last_tail;
         else
@@ -230,6 +236,7 @@ while start
         
         y_last_tail = y(end-overlap+1:end);
 
+        %% concatenate
         last_acquiredAudio = acquiredAudio(end-overlap+1:end,:);
     end
     
@@ -331,28 +338,7 @@ end
 set(handles.pushbutton2,'string',dir);
 global angle;
 angle_dir = (dir-1)*30;
-angle = [angle_dir,0]/180*pi;
-
-global noise;
-global Fvv;
-global fs;
-global N_FFT;
-global r;
-%% Frequency domain delay-sum,time alignment
-[ DelaySumOut, noise_DS] = DelaySumURA(noise,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
-noise = noise_DS;
-%% estimate noise coherence function
-for i = 1:size(noise,2)
-    for j = 1:size(noise,2)
-        [sc,F]=mycohere(noise(:,i),noise(:,j),256,fs,hanning(256),0.75*256);
-        Fvv(:,i,j) = real(sc);
-        index = find(Fvv(:,i,j)>0.9);
-        if(size(index,1)>0)
-            Fvv(index,i,j)=0.9;
-        end
-        Fvv(1,i,j) = 0.9;
-    end
-end
+angle = [angle_dir,30]/180*pi;
 
 
 % --- Executes on button press in pushbutton3.
