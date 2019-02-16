@@ -64,20 +64,24 @@ if strcmp(get(hObject,'Visible'),'off')
 end
 
 global NS;
-NS = 1;
+NS = 0;
 global start;
 start = 0;
 global recObj;
 global dir;
 dir = 1;
 global fs;
+global buffer_size;
 buffer_size = 1024;
-fs = 8000;
+fs = 16000;
 global deviceReader;
-deviceReader = audioDeviceReader('NumChannels',8,'SampleRate',fs,'SamplesPerFrame',buffer_size);
+global channels;
+channels = 6;
+deviceReader = audioDeviceReader('NumChannels',channels,'SampleRate',fs,'SamplesPerFrame',buffer_size);
 devices = getAudioDevices(deviceReader)
-SoundCardNum = input('please select XMOS sound card number:');
-deviceReader = audioDeviceReader('NumChannels',8,'SampleRate',fs,'SamplesPerFrame',buffer_size,'Device',devices{SoundCardNum});
+% SoundCardNum = input('please select XMOS sound card number:');
+SoundCardNum = 3;
+deviceReader = audioDeviceReader('NumChannels',channels,'SampleRate',fs,'SamplesPerFrame',buffer_size,'Device',devices{SoundCardNum});
 
 %devices = getAudioDevices(deviceReader);
 setup(deviceReader);
@@ -111,6 +115,7 @@ global deviceReader;
 global deviceWriter;
 global fs;
 global NS;
+global channels;
 
 global dir;
 global start;
@@ -133,61 +138,107 @@ else
     
     set(handles.pushbutton1,'string','stop');
     set(handles.pushbutton1, 'BackgroundColor',[1 0 0]);
+    
+    NS = 0;
+    set(handles.pushbutton3,'string','NS OFF....');
+    set(handles.pushbutton3, 'BackgroundColor',[1 0 0]);
 end
 
-d = 0.0418;
-inc = 16;
-chunk_size = 1024;
+global angle;
+angle_dir = (dir-1)*30;
+angle = [angle_dir,0]/180*pi;
+M = 4;        %Channels
+global r;
+r = 0.032;
+%%
+
+%% Frequency domain delay-sum,time alignment
+% [ DelaySumOut, x] = DelaySumURA(x,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
+
+
+%%
+global N_FFT;
+N_FFT = 256;
+
+window = hamming(N_FFT);
+
+
+P_len = N_FFT/2+1;
+
+Pxii_pre = ones(M,P_len);
+
+Pxij_pre = ones((M*M-M)/2,P_len);
+%%
+
+inc = 128;
 frameLength = 256;
 overlap = frameLength - inc;
-     t = 27;
-     c = (331.3+0.606*t);
-     tao0 = d/c;
-     theta0 = 180;
-     alpha = cos(theta0/180*pi);
-     beta = 1;
-     N = frameLength;
 
-last_acquiredAudio = zeros(overlap,8);
-last_output = zeros(overlap,1);
+
+last_acquiredAudio = zeros(overlap,channels);
+y_last_tail = zeros(overlap,1);
 % playData = zeros(chunk_size,1);
 
 L = 1;
 % w = randn(L,1);
 ang = [90;0];
-T = load('T0.mat');
-T = T.T0;
+timeCount = 0;
+global buffer_size;
+noisePeriod = round(2*16000/buffer_size);%
+global noise;
+noise = zeros(buffer_size*noisePeriod,M);
 
+global Fvv;
+Fvv = zeros(N_FFT/2+1,M,M);
 while start
-    
-        acquiredAudio = deviceReader();
-    x = [last_acquiredAudio(:,[4,1,7]);acquiredAudio(:,[4,1,7])];
-%     size(acquiredAudio)
-%     y = DMA(x);
-%     playData = [last_output;y(1:end-overlap)];
-%     deviceWriter(real(playData));
-
-    y = zeros(chunk_size+overlap,1);
-    y(1:overlap) = last_output;
-    if NS
-        y = postprocessing(x,y,fs,ang,T');
+    acquiredAudio = deviceReader();
+    if(timeCount<noisePeriod)
+        noise(timeCount*buffer_size+1:timeCount*buffer_size+buffer_size,:) = acquiredAudio(:,[2,3,4,5]);
+        timeCount = timeCount+1;
+        if(timeCount==noisePeriod)
+          %% Frequency domain delay-sum,time alignment
+           [ DelaySumOut, noise_DS] = DelaySumURA(noise,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
+            noise = noise_DS;
+          %% estimate noise coherence function
+            for i = 1:size(noise,2)
+                for j = 1:size(noise,2)
+                    [sc,F]=mycohere(noise(:,i),noise(:,j),256,fs,hanning(256),0.75*256);
+                    Fvv(:,i,j) = real(sc);
+                    index = find(Fvv(:,i,j)>0.95);
+                    if(size(index,1)>0)
+                        Fvv(index,i,j)=0.95;
+                    end
+                    Fvv(1,i,j) = 0.95;
+                end
+            end
+        end
     else
-        y = x(:,1);
+        x = [last_acquiredAudio(:,[2,3,4,5]);acquiredAudio(:,[2,3,4,5])];
+        if NS
+            [y,Pxii_pre,Pxij_pre]= post_filter_func( x,fs,Fvv,Pxii_pre,Pxij_pre,angle);
+            y = y';
+            
+%             playData = y(end-N_FFT+1:end);
+            playData = y(1:end-overlap);
+            playData(1:overlap) = playData(1:overlap)+y_last_tail;
+        else
+            y = x(:,1);
+            playData = y(1:end-overlap);
+        end
+
+        deviceWriter(real(playData));
+        
+        y_last_tail = y(end-overlap+1:end);
+
+        last_acquiredAudio = acquiredAudio(end-overlap+1:end,:);
     end
     
-    playData = [y(1:end-overlap)];
-    deviceWriter(real(playData));
-    
-    
-    last_output = y(end-overlap+1:end);
-    last_acquiredAudio = acquiredAudio(end-overlap+1:end,:);
-    
 
-    set(handles.text1,'string',beta);
+%     set(handles.text1,'string',beta);
     theta = 0:0.01:pi/4;
     rho = sin(2*theta).*cos(2*theta);
 %     polarplot(theta-22.5/180*pi+ang(1)/180*pi,rho)
-    polarplot(theta-22.5/180*pi+(dir-1)*60/180*pi,rho)
+    polarplot(theta-22.5/180*pi+(dir-1)*30/180*pi,rho)
     drawnow
 end
 
@@ -272,12 +323,36 @@ function pushbutton2_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 global dir;
-if(dir == 6)
+if(dir == 12)
     dir = 1;
 else
     dir = dir + 1;
 end
 set(handles.pushbutton2,'string',dir);
+global angle;
+angle_dir = (dir-1)*30;
+angle = [angle_dir,0]/180*pi;
+
+global noise;
+global Fvv;
+global fs;
+global N_FFT;
+global r;
+%% Frequency domain delay-sum,time alignment
+[ DelaySumOut, noise_DS] = DelaySumURA(noise,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
+noise = noise_DS;
+%% estimate noise coherence function
+for i = 1:size(noise,2)
+    for j = 1:size(noise,2)
+        [sc,F]=mycohere(noise(:,i),noise(:,j),256,fs,hanning(256),0.75*256);
+        Fvv(:,i,j) = real(sc);
+        index = find(Fvv(:,i,j)>0.9);
+        if(size(index,1)>0)
+            Fvv(index,i,j)=0.9;
+        end
+        Fvv(1,i,j) = 0.9;
+    end
+end
 
 
 % --- Executes on button press in pushbutton3.
