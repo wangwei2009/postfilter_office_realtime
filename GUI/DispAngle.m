@@ -22,7 +22,7 @@ function varargout = DispAngle(varargin)
 
 % Edit the above text to modify the response to help DispAngle
 
-% Last Modified by GUIDE v2.5 05-Dec-2017 19:23:33
+% Last Modified by GUIDE v2.5 18-Feb-2019 15:03:29
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -68,8 +68,9 @@ NS = 0;
 global start;
 start = 0;
 global recObj;
-global dir;
-dir = 1;
+global look_dir;
+% default 270
+look_dir = 10;
 global fs;
 global buffer_size;
 buffer_size = 1024;
@@ -117,8 +118,12 @@ global fs;
 global NS;
 global channels;
 
-global dir;
+global look_dir;
 global start;
+
+global recording;
+recording = 0;
+global saveWav;
 
 if NS == 0
     set(handles.pushbutton3,'string','NS OFF....');
@@ -142,11 +147,24 @@ else
     NS = 0;
     set(handles.pushbutton3,'string','NS OFF....');
     set(handles.pushbutton3, 'BackgroundColor',[1 0 0]);
+    
+    if(recording==1)
+        recording = 0;
+        set(handles.pushbutton4,'string','Record');
+        set(handles.pushbutton4, 'BackgroundColor',[1 0 0]);
+        existedWav = dir('SavedRec*.wav');
+        if ~isempty(existedWav)
+            audiowrite(['SavedRec_',num2str(length(existedWav)+1),'.wav'],saveWav,fs);
+        else
+            audiowrite('SavedRec_1.wav',saveWav,fs);
+        end
+    end
+
 end
 
 global angle;
-angle_dir = (dir-1)*30;
-angle = [angle_dir,30]/180*pi;
+angle_look_dir = (look_dir-1)*30;
+angle = [angle_look_dir,30]/180*pi;
 M = 4;        %Channels
 global r;
 r = 0.032;
@@ -159,9 +177,6 @@ r = 0.032;
 %%
 global N_FFT;
 N_FFT = 256;
-
-window = hamming(N_FFT);
-
 
 P_len = N_FFT/2+1;
 
@@ -179,17 +194,17 @@ last_acquiredAudio = zeros(overlap,channels);
 y_last_tail = zeros(overlap,1);
 % playData = zeros(chunk_size,1);
 
-L = 1;
-% w = randn(L,1);
-ang = [90;0];
 timeCount = 0;
 global buffer_size;
 noisePeriod = round(0.1*16000/buffer_size);%
 global noise;
 noise = zeros(buffer_size*noisePeriod,M);
 
+X_last_HPed = zeros(overlap,M);
+%%
 global Fvv;
 Fvv = zeros(N_FFT/2+1,M,M);
+
 while start
     acquiredAudio = deviceReader();
     if(timeCount<noisePeriod)
@@ -197,9 +212,19 @@ while start
         timeCount = timeCount+1;
     else
         x = [last_acquiredAudio(:,[2,3,4,5]);acquiredAudio(:,[2,3,4,5])];
+
         if NS
+            %% High-pass
+            X_HPed = filter_HP(x);
+        
+            X_HPed(1:overlap,:) = X_last_HPed;
+
+            % save tail
+            X_last_HPed = X_HPed(end-overlap+1:end,:);
+
+            x = X_HPed;
             %% Frequency domain delay-sum,time alignment
-            [ DelaySumOut, x] = DelaySumURA(x,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
+            [ ~, x] = DelaySumURA(x,fs,N_FFT,N_FFT,N_FFT/2,r,angle);
         
             %% postfilter
             [y,Pxii_pre,Pxij_pre]= post_filter_func( x,fs,Fvv,Pxii_pre,Pxij_pre,angle);
@@ -213,11 +238,11 @@ while start
                         t = t+1;
                         Fvv_ij = Pxij_pre(t,:)./sqrt(Pxii_pre(i,:).*Pxii_pre(i,:));
                         Fvv(:,i,j) = alpha*Fvv(:,i,j)+(1-alpha)*real(Fvv_ij)';
-                        index = find(Fvv(:,i,j)>0.90);
+                        index = find(Fvv(:,i,j)>0.98);
                         if(size(index,1)>0)
-                            Fvv(index,i,j)=0.90;
+                            Fvv(index,i,j)=0.98;
                         end
-                        Fvv(1,i,j) = 0.90;
+                        Fvv(1,i,j) = 0.98;
                     end
                 end
             end
@@ -234,6 +259,13 @@ while start
 
         deviceWriter(real(playData));
         
+        %% save data to local wav file
+        if recording
+            playData = playData(:);
+            saveWav = [saveWav;playData];
+        end
+
+        
         y_last_tail = y(end-overlap+1:end);
 
         %% concatenate
@@ -245,7 +277,7 @@ while start
     theta = 0:0.01:pi/4;
     rho = sin(2*theta).*cos(2*theta);
 %     polarplot(theta-22.5/180*pi+ang(1)/180*pi,rho)
-    polarplot(theta-22.5/180*pi+(dir-1)*30/180*pi,rho)
+    polarplot(theta-22.5/180*pi+(look_dir-1)*30/180*pi,rho)
     drawnow
 end
 
@@ -329,16 +361,16 @@ function pushbutton2_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbutton2 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-global dir;
-if(dir == 12)
-    dir = 1;
+global look_dir;
+if(look_dir == 12)
+    look_dir = 1;
 else
-    dir = dir + 1;
+    look_dir = look_dir + 1;
 end
-set(handles.pushbutton2,'string',dir);
+set(handles.pushbutton2,'string',look_dir);
 global angle;
-angle_dir = (dir-1)*30;
-angle = [angle_dir,30]/180*pi;
+angle_look_dir = (look_dir-1)*30;
+angle = [angle_look_dir,30]/180*pi;
 
 
 % --- Executes on button press in pushbutton3.
@@ -356,3 +388,32 @@ else
         set(handles.pushbutton3,'string','NS ON....');
     set(handles.pushbutton3, 'BackgroundColor',[0 1 0]);
 end
+
+
+% --- Executes on button press in pushbutton4.
+function pushbutton4_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton4 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+global fs;
+global saveWav;
+global recording;
+if recording == 1
+    recording = 0;
+    set(handles.pushbutton4,'string','Record');
+    set(handles.pushbutton4, 'BackgroundColor',[1 0 0]);
+    
+    existedWav = dir('SavedRec*.wav');
+    if ~isempty(existedWav)
+        audiowrite(['SavedRec_',num2str(length(existedWav)+1),'.wav'],saveWav,fs);
+    else
+        audiowrite('SavedRec_1.wav',saveWav,fs);
+    end
+
+else
+    recording = 1;
+    saveWav = 0;
+    set(handles.pushbutton4,'string','Recording....');
+    set(handles.pushbutton4, 'BackgroundColor',[0 1 0]);
+end
+
